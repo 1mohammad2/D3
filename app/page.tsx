@@ -40,6 +40,11 @@ export default function HomePage() {
               <Link href="/auth/register">
                 <Button type="button">Join the squad</Button>
               </Link>
+              <Link href="/games">
+                <Button variant="ghost" type="button">
+                  Game lobby
+                </Button>
+              </Link>
               <Link href="/auth/signin">
                 <Button variant="secondary" type="button">
                   Sign in

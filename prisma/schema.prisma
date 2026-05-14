@@ -93,22 +93,24 @@ model User {
 }
 
 model Game {
-  id             String              @id @default(cuid())
-  group          Group               @relation(fields: [groupId], references: [id])
-  groupId        String
-  date           DateTime
-  openAt         DateTime
-  closeAt        DateTime
-  capacity       Int                 @default(36)
-  isPublished    Boolean             @default(false)
-  registrationOpen Boolean           @default(false)
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  registrations  Registration[]
-  waitingList    WaitingListItem[]
-  teams          Team[]
-  matches        Match[]
-  announcements  Announcement[]
+  id               String              @id @default(cuid())
+  group            Group               @relation(fields: [groupId], references: [id])
+  groupId          String
+  date             DateTime
+  openAt           DateTime
+  closeAt          DateTime
+  capacity         Int                 @default(36)
+  isPublished      Boolean             @default(false)
+  registrationOpen Boolean             @default(false)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  registrations    Registration[]
+  waitingList      WaitingListItem[]
+  teams            Team[]
+  matches          Match[]
+  announcements    Announcement[]
+
+  @@unique([date])
 }
 
 model Registration {
@@ -124,6 +126,8 @@ model Registration {
   isLateCancel  Boolean            @default(false)
   metadata      Json?
   updatedAt     DateTime           @updatedAt
+
+  @@unique([userId, gameId])
 }
 
 model WaitingListItem {
