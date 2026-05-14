@@ -1,8 +1,10 @@
+import { NotificationType } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { createGame, getUpcomingGames } from '@/lib/game-service';
 import { isValidGameDate } from '@/lib/game';
+import { prisma } from '@/lib/prisma';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -33,6 +35,26 @@ export async function POST(request: Request) {
 
   try {
     const game = await createGame(date);
+
+    const approvedPlayers = await prisma.user.findMany({
+      where: { approved: true, role: 'PLAYER' },
+      select: { id: true }
+    });
+
+    if (approvedPlayers.length > 0) {
+      await prisma.notification.createMany({
+        data: approvedPlayers.map((player: { id: string }) => ({
+          userId: player.id,
+          gameId: game.id,
+          type: NotificationType.REGISTRATION_OPEN,
+          title: 'New game scheduled',
+          message: `A new game has been scheduled for ${game.date.toLocaleString()}. Registration opens soon.`,
+          read: false,
+          payload: { gameId: game.id, opensAt: game.openAt.toISOString() }
+        }))
+      });
+    }
+
     return NextResponse.json({ game });
   } catch (error: any) {
     if (error?.code === 'P2002') {

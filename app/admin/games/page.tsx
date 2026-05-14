@@ -20,8 +20,9 @@ export default async function AdminGamesPage() {
     where: { date: { gte: new Date() } },
     orderBy: { date: 'asc' },
     include: {
-      _count: {
-        select: { registrations: true }
+      registrations: {
+        where: { status: 'CONFIRMED' },
+        select: { id: true }
       }
     }
   });
@@ -68,7 +69,7 @@ export default async function AdminGamesPage() {
                         <p className="text-sm text-slate-400">Starts at {game.date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</p>
                       </div>
                       <div className="rounded-3xl bg-slate-900/80 px-4 py-2 text-sm text-slate-200">
-                        {game._count.registrations} / 36 registered
+                        {game.registrations.length} / 36 registered
                       </div>
                     </div>
                   </div>

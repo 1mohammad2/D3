@@ -36,8 +36,9 @@ export async function getUpcomingGames(limit = 6) {
     orderBy: { date: 'asc' },
     take: limit,
     include: {
-      _count: {
-        select: { registrations: true }
+      registrations: {
+        where: { status: 'CONFIRMED' },
+        select: { id: true }
       }
     }
   });

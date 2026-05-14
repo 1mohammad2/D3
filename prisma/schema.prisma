@@ -40,7 +40,9 @@ enum MatchStatus {
 enum NotificationType {
   REGISTRATION_OPEN
   CONFIRMED
+  WAITLIST_JOIN
   WAITLIST_PROMOTION
+  WAITLIST_UPDATE
   TEAMS_PUBLISHED
   SCHEDULE_PUBLISHED
   REMINDER
@@ -138,6 +140,9 @@ model WaitingListItem {
   gameId    String
   position  Int      @default(1)
   createdAt DateTime @default(now())
+
+  @@unique([userId, gameId])
+  @@unique([gameId, position])
 }
 
 model Team {

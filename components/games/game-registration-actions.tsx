@@ -11,9 +11,10 @@ interface GameRegistrationActionsProps {
   closeAt: string;
   spotsLeft: number;
   isRegistered: boolean;
+  waitingPosition: number | null;
 }
 
-export function GameRegistrationActions({ gameId, gameDate, openAt, closeAt, spotsLeft, isRegistered }: GameRegistrationActionsProps) {
+export function GameRegistrationActions({ gameId, gameDate, openAt, closeAt, spotsLeft, isRegistered, waitingPosition }: GameRegistrationActionsProps) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -26,14 +27,16 @@ export function GameRegistrationActions({ gameId, gameDate, openAt, closeAt, spo
 
   const registrationOpen = currentTime >= openAtDate && currentTime < gameDateTime;
   const cancellationAllowed = currentTime < closeAtDate && isRegistered;
-  const canRegister = registrationOpen && spotsLeft > 0 && !isRegistered;
+  const canRegister = registrationOpen && spotsLeft > 0 && !isRegistered && waitingPosition === null;
+  const canJoinWaitlist = registrationOpen && spotsLeft === 0 && waitingPosition === null;
 
-  const handleAction = async (action: 'register' | 'cancel') => {
+  const handleAction = async (action: 'register' | 'cancel' | 'leave-waitlist') => {
     setLoading(true);
     setError(null);
     setStatusMessage(null);
 
-    const response = await fetch(`/api/games/${action}`, {
+    const endpoint = action === 'leave-waitlist' ? '/api/games/waitlist/remove' : `/api/games/${action}`;
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ gameId })
@@ -69,9 +72,19 @@ export function GameRegistrationActions({ gameId, gameDate, openAt, closeAt, spo
         <Button variant="ghost" onClick={() => handleAction('cancel')} disabled={!cancellationAllowed || loading}>
           {loading ? 'Processing...' : cancellationAllowed ? 'Cancel registration' : 'Cancellation locked'}
         </Button>
+      ) : waitingPosition !== null ? (
+        <div className="space-y-3">
+          <div className="rounded-3xl bg-slate-900/80 p-3 text-sm text-slate-200">
+            <p className="font-semibold text-white">Waiting list position</p>
+            <p className="mt-1 text-lg">{waitingPosition}</p>
+          </div>
+          <Button variant="ghost" onClick={() => handleAction('leave-waitlist')} disabled={loading}>
+            {loading ? 'Processing...' : 'Leave waiting list'}
+          </Button>
+        </div>
       ) : (
-        <Button onClick={() => handleAction('register')} disabled={!canRegister || loading}>
-          {loading ? 'Processing...' : spotsLeft === 0 ? 'Game full' : 'Reserve spot'}
+        <Button onClick={() => handleAction('register')} disabled={!(canRegister || canJoinWaitlist) || loading}>
+          {loading ? 'Processing...' : canRegister ? 'Reserve spot' : canJoinWaitlist ? 'Join waiting list' : 'Register unavailable'}
         </Button>
       )}
 

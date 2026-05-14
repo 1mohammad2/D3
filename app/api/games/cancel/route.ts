@@ -1,7 +1,9 @@
+import { NotificationType } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { promoteNextWaitingUser } from '@/lib/waitlist-service';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -46,13 +48,29 @@ export async function POST(request: Request) {
     data: {
       userId: session.user.id,
       gameId: game.id,
-      type: 'CANCELLATION',
+      type: NotificationType.CANCELLATION,
       title: 'Registration cancelled',
       message: `Your spot for the game on ${game.date.toISOString()} has been cancelled.`,
       read: false,
       payload: { gameId: game.id }
     }
   });
+
+  const promotion = await promoteNextWaitingUser(game.id);
+
+  if (promotion) {
+    await prisma.notification.create({
+      data: {
+        userId: promotion.userId,
+        gameId: game.id,
+        type: NotificationType.WAITLIST_PROMOTION,
+        title: 'Spot available',
+        message: `A spot opened and you have been moved into the confirmed roster for the game on ${game.date.toISOString()}.`,
+        read: false,
+        payload: { gameId: game.id }
+      }
+    });
+  }
 
   return NextResponse.json({ message: 'Registration cancelled successfully.' });
 }

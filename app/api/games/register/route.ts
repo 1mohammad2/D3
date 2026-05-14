@@ -1,7 +1,9 @@
+import { NotificationType } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { addToWaitingList } from '@/lib/waitlist-service';
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -38,17 +40,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Game has already started.' }, { status: 409 });
   }
 
-  const [existingRegistration, confirmedCount] = await prisma.$transaction([
+  const [existingRegistration, confirmedCount, waitingItem] = await prisma.$transaction([
     prisma.registration.findUnique({ where: { userId_gameId: { userId: user.id, gameId: game.id } } }),
-    prisma.registration.count({ where: { gameId: game.id, status: 'CONFIRMED' } })
+    prisma.registration.count({ where: { gameId: game.id, status: 'CONFIRMED' } }),
+    prisma.waitingListItem.findUnique({ where: { userId_gameId: { userId: user.id, gameId: game.id } } })
   ]);
 
   if (existingRegistration && existingRegistration.status === 'CONFIRMED') {
     return NextResponse.json({ error: 'You are already registered for this game.' }, { status: 409 });
   }
 
+  if (waitingItem) {
+    return NextResponse.json({ error: 'You are already on the waiting list for this game.' }, { status: 409 });
+  }
+
   if (confirmedCount >= game.capacity) {
-    return NextResponse.json({ error: 'This game is full. Please wait for the next available slot.' }, { status: 409 });
+    const waitingLine = await addToWaitingList(user.id, game.id);
+    const notification = await prisma.notification.create({
+      data: {
+        userId: user.id,
+        gameId: game.id,
+        type: NotificationType.WAITLIST_JOIN,
+        title: 'Waiting list confirmed',
+        message: `The game is full. You have been added to the waiting list in position ${waitingLine.position}.`,
+        read: false,
+        payload: { gameId: game.id, position: waitingLine.position }
+      }
+    });
+    return NextResponse.json({ waitingList: waitingLine, notification }, { status: 201 });
   }
 
   const registration = await prisma.registration.create({
@@ -64,7 +83,7 @@ export async function POST(request: Request) {
     data: {
       userId: user.id,
       gameId: game.id,
-      type: 'CONFIRMED',
+      type: NotificationType.CONFIRMED,
       title: 'Registration confirmed',
       message: `You have secured a spot for the game on ${game.date.toISOString()}.`,
       read: false,

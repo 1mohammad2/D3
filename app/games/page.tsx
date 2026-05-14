@@ -18,7 +18,10 @@ export default async function GamesPage() {
     orderBy: { date: 'asc' },
     take: 6,
     include: {
-      _count: { select: { registrations: true } }
+      registrations: {
+        where: { status: 'CONFIRMED' },
+        select: { id: true }
+      }
     }
   });
 
@@ -30,7 +33,18 @@ export default async function GamesPage() {
     }
   });
 
+  const waitingItems = await prisma.waitingListItem.findMany({
+    where: {
+      userId: session.user.id,
+      gameId: { in: games.map((game) => game.id) }
+    }
+  });
+
   const registeredGameIds = registrations.map((registration) => registration.gameId);
+  const waitingPositions = waitingItems.reduce<Record<string, number>>((acc, item) => {
+    acc[item.gameId] = item.position;
+    return acc;
+  }, {});
 
   return (
     <main className="min-h-screen px-6 py-10 sm:px-10">
@@ -43,14 +57,19 @@ export default async function GamesPage() {
             />
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link href="/">
-              <Button variant="secondary" size="sm">
-                Back to home
+            <Link href="/notifications">
+              <Button variant="ghost" size="sm">
+                Notifications
               </Button>
             </Link>
             <Link href="/profile">
               <Button variant="ghost" size="sm">
                 My profile
+              </Button>
+            </Link>
+            <Link href="/">
+              <Button variant="secondary" size="sm">
+                Back to home
               </Button>
             </Link>
           </div>
@@ -64,7 +83,7 @@ export default async function GamesPage() {
           <div className="space-y-6">
             {games.map((game) => {
               const isRegistered = registeredGameIds.includes(game.id);
-              const spotsLeft = Math.max(0, 36 - game._count.registrations);
+              const spotsLeft = Math.max(0, 36 - game.registrations.length);
               return (
                 <Card key={game.id} className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
                   <div>
@@ -80,6 +99,7 @@ export default async function GamesPage() {
                     closeAt={game.closeAt.toISOString()}
                     spotsLeft={spotsLeft}
                     isRegistered={isRegistered}
+                    waitingPosition={waitingPositions[game.id] ?? null}
                   />
                 </Card>
               );
