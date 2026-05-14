@@ -1,0 +1,231 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PLAYER
+  ADMIN
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  SETTER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum RegistrationStatus {
+  CONFIRMED
+  WAITING
+  CANCELLED
+}
+
+enum MatchStatus {
+  SCHEDULED
+  ONGOING
+  COMPLETED
+}
+
+enum NotificationType {
+  REGISTRATION_OPEN
+  CONFIRMED
+  WAITLIST_PROMOTION
+  TEAMS_PUBLISHED
+  SCHEDULE_PUBLISHED
+  REMINDER
+  CANCELLATION
+  WARNING
+  BAN
+}
+
+model Group {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  users       User[]
+  games       Game[]
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  name               String
+  email              String    @unique
+  emailVerified      DateTime?
+  password           String
+  phone              String?
+  image              String?
+  role               Role      @default(PLAYER)
+  approved           Boolean   @default(false)
+  bannedUntil        DateTime?
+  warnings           Int       @default(0)
+  lateCancellations  Int       @default(0)
+  mvpCount           Int       @default(0)
+  attendanceCount    Int       @default(0)
+  gamesPlayed        Int       @default(0)
+  wins               Int       @default(0)
+  losses             Int       @default(0)
+  rankingScore       Float     @default(0.0)
+  skillLevel         SkillLevel
+  gender             Gender
+  setterStatus       Boolean   @default(false)
+  group              Group?    @relation(fields: [groupId], references: [id])
+  groupId            String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  registrations      Registration[]
+  notifications      Notification[]
+  bans               Ban[]
+  warningsRecords    Warning[]
+}
+
+model Game {
+  id             String              @id @default(cuid())
+  group          Group               @relation(fields: [groupId], references: [id])
+  groupId        String
+  date           DateTime
+  openAt         DateTime
+  closeAt        DateTime
+  capacity       Int                 @default(36)
+  isPublished    Boolean             @default(false)
+  registrationOpen Boolean           @default(false)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  registrations  Registration[]
+  waitingList    WaitingListItem[]
+  teams          Team[]
+  matches        Match[]
+  announcements  Announcement[]
+}
+
+model Registration {
+  id            String             @id @default(cuid())
+  user          User               @relation(fields: [userId], references: [id])
+  userId        String
+  game          Game               @relation(fields: [gameId], references: [id])
+  gameId        String
+  status        RegistrationStatus @default(WAITING)
+  joinedAt      DateTime           @default(now())
+  confirmedAt   DateTime?
+  cancelledAt   DateTime?
+  isLateCancel  Boolean            @default(false)
+  metadata      Json?
+  updatedAt     DateTime           @updatedAt
+}
+
+model WaitingListItem {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  game      Game     @relation(fields: [gameId], references: [id])
+  gameId    String
+  position  Int      @default(1)
+  createdAt DateTime @default(now())
+}
+
+model Team {
+  id         String         @id @default(cuid())
+  game       Game           @relation(fields: [gameId], references: [id])
+  gameId     String
+  name       String
+  captainId  String?
+  captain    User?          @relation(fields: [captainId], references: [id])
+  status     String         @default("DRAFT")
+  members    TeamMember[]
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+}
+
+model TeamMember {
+  id      String @id @default(cuid())
+  team    Team   @relation(fields: [teamId], references: [id])
+  teamId  String
+  user    User   @relation(fields: [userId], references: [id])
+  userId  String
+}
+
+model Match {
+  id             String      @id @default(cuid())
+  game           Game        @relation(fields: [gameId], references: [id])
+  gameId         String
+  homeTeam       Team        @relation("HomeMatches", fields: [homeTeamId], references: [id])
+  homeTeamId     String
+  awayTeam       Team        @relation("AwayMatches", fields: [awayTeamId], references: [id])
+  awayTeamId     String
+  court          String
+  status         MatchStatus @default(SCHEDULED)
+  winnerTeamId   String?
+  winnerTeam     Team?       @relation(fields: [winnerTeamId], references: [id])
+  startTime      DateTime
+  endTime        DateTime
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model Notification {
+  id           String           @id @default(cuid())
+  user         User             @relation(fields: [userId], references: [id])
+  userId       String
+  game         Game?            @relation(fields: [gameId], references: [id])
+  gameId       String?
+  type         NotificationType
+  title        String
+  message      String
+  read         Boolean          @default(false)
+  payload      Json?
+  createdAt    DateTime         @default(now())
+}
+
+model Warning {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  game        Game?    @relation(fields: [gameId], references: [id])
+  gameId      String?
+  reason      String
+  createdAt   DateTime @default(now())
+}
+
+model Ban {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  reason     String
+  expiresAt  DateTime?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  game      Game     @relation(fields: [gameId], references: [id])
+  gameId    String
+  present   Boolean
+  createdAt DateTime @default(now())
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  game      Game     @relation(fields: [gameId], references: [id])
+  gameId    String
+  title     String
+  message   String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
