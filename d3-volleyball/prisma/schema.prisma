@@ -1,0 +1,320 @@
+// D3 Volleyball Platform — Database Schema
+// Designed for current single-group use + future SaaS scaling
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS — تعريف القيم الثابتة
+// ============================================================
+
+enum Role {
+  ADMIN
+  PLAYER
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  SETTER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum GameStatus {
+  UPCOMING           // قادمة
+  REGISTRATION_OPEN  // التسجيل مفتوح
+  FULL               // اكتملت
+  IN_PROGRESS        // جارية
+  COMPLETED          // منتهية
+  CANCELLED          // ملغاة
+}
+
+enum RegistrationStatus {
+  CONFIRMED    // مؤكد
+  WAITLISTED   // قائمة انتظار
+  CANCELLED    // ملغى
+}
+
+enum NotificationType {
+  REGISTRATION_OPEN
+  REGISTRATION_CONFIRMED
+  MOVED_FROM_WAITLIST
+  TEAMS_PUBLISHED
+  SCHEDULE_PUBLISHED
+  GAME_REMINDER
+  CANCELLATION_ALERT
+  WARNING_ISSUED
+  BAN_ISSUED
+}
+
+// ============================================================
+// USER — اللاعبون والمشرفون
+// ============================================================
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  password     String    // hashed
+  fullName     String
+  nickname     String?
+  phone        String?   @unique
+  gender       Gender
+  skillLevel   SkillLevel @default(BEGINNER)
+  profilePhoto String?   // Cloudinary URL
+
+  role         Role      @default(PLAYER)
+  isApproved   Boolean   @default(false) // Admin must approve
+  isBanned     Boolean   @default(false)
+  isActive     Boolean   @default(true)
+
+  // Stats — يُحسب من السجلات لكن نحتفظ بنسخة للأداء
+  gamesPlayed      Int @default(0)
+  wins             Int @default(0)
+  losses           Int @default(0)
+  rankingPoints    Int @default(0)    // النقاط الخام
+  rankingScore     Int @default(0)    // (points/games)*100
+  mvpCount         Int @default(0)
+  warningCount     Int @default(0)
+  lateCancelCount  Int @default(0)
+
+  // SaaS preparation — مستقبلاً كل مجموعة لها لاعبونها
+  groupId      String?   // Future: which volleyball group they belong to
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  registrations Registration[]
+  waitingList   WaitingList[]
+  teamMembers   TeamMember[]
+  warnings      Warning[]
+  bans          Ban[]
+  notifications Notification[]
+  sentNotifications Notification[] @relation("NotificationSender")
+
+  @@index([email])
+  @@index([rankingScore])
+}
+
+// ============================================================
+// GAME — جلسة اللعب (الأربعاء، الجمعة، الأحد)
+// ============================================================
+
+model Game {
+  id          String     @id @default(cuid())
+  date        DateTime   // تاريخ ووقت اللعبة
+  status      GameStatus @default(UPCOMING)
+  maxPlayers  Int        @default(36)
+  venue       String?    @default("Main Court") // للمستقبل SaaS
+
+  // Auto-managed timestamps
+  registrationOpensAt DateTime  // 30 hours before game
+  registrationClosesAt DateTime? // when full or game starts
+
+  teamsPublished    Boolean @default(false)
+  schedulePublished Boolean @default(false)
+
+  // SaaS preparation
+  groupId     String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  registrations Registration[]
+  waitingList   WaitingList[]
+  teams         Team[]
+  matches       Match[]
+
+  @@index([date])
+  @@index([status])
+}
+
+// ============================================================
+// REGISTRATION — تسجيل اللاعب في اللعبة
+// ============================================================
+
+model Registration {
+  id        String             @id @default(cuid())
+  userId    String
+  gameId    String
+  status    RegistrationStatus @default(CONFIRMED)
+
+  // Tracking
+  registeredAt DateTime @default(now())
+  cancelledAt  DateTime?
+  isLateCancellation Boolean @default(false) // cancelled within 4 hours
+
+  // Attendance — هل حضر الفعلاً؟
+  attended     Boolean? // null = not yet checked, true/false after game
+
+  user  User @relation(fields: [userId], references: [id])
+  game  Game @relation(fields: [gameId], references: [id])
+
+  @@unique([userId, gameId]) // لا يمكن التسجيل مرتين في نفس اللعبة
+  @@index([gameId])
+  @@index([userId])
+}
+
+// ============================================================
+// WAITING LIST — قائمة الانتظار
+// ============================================================
+
+model WaitingList {
+  id       String @id @default(cuid())
+  userId   String
+  gameId   String
+  position Int    // ترتيب في القائمة (1 = الأول)
+
+  joinedAt    DateTime @default(now())
+  promotedAt  DateTime? // متى انتقل للتسجيل الرسمي
+  isPromoted  Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id])
+  game Game @relation(fields: [gameId], references: [id])
+
+  @@unique([userId, gameId])
+  @@index([gameId, position]) // للبحث السريع عن الأول في القائمة
+}
+
+// ============================================================
+// TEAM — الفرق (6 فرق في كل لعبة)
+// ============================================================
+
+model Team {
+  id       String @id @default(cuid())
+  gameId   String
+  name     String // "Team 1", "Team 2", etc.
+  number   Int    // 1-6
+
+  // Stats بعد اللعبة
+  wins   Int @default(0)
+  losses Int @default(0)
+
+  isPublished Boolean @default(false) // Admin publishes when ready
+
+  game    Game         @relation(fields: [gameId], references: [id])
+  members TeamMember[]
+  homeMatches Match[]  @relation("HomeTeam")
+  awayMatches Match[]  @relation("AwayTeam")
+
+  @@unique([gameId, number]) // فريق واحد برقم محدد في كل لعبة
+  @@index([gameId])
+}
+
+// ============================================================
+// TEAM MEMBER — ربط اللاعبين بالفرق
+// ============================================================
+
+model TeamMember {
+  id       String @id @default(cuid())
+  teamId   String
+  userId   String
+  isCaptain Boolean @default(false) // Setters are auto-captains
+
+  team Team @relation(fields: [teamId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([teamId, userId])
+}
+
+// ============================================================
+// MATCH — المباريات بين الفرق
+// ============================================================
+
+model Match {
+  id       String @id @default(cuid())
+  gameId   String
+  round    Int    // رقم الجولة
+  court    Int    // 1 or 2
+
+  homeTeamId String
+  awayTeamId String
+
+  // Results — يُدخلها الأدمن
+  homeScore Int?
+  awayScore Int?
+  winnerId  String? // Team ID of winner
+
+  startTime DateTime?
+  endTime   DateTime?
+  isCompleted Boolean @default(false)
+
+  game     Game @relation(fields: [gameId], references: [id])
+  homeTeam Team @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam Team @relation("AwayTeam", fields: [awayTeamId], references: [id])
+
+  @@index([gameId])
+}
+
+// ============================================================
+// WARNING — تحذيرات اللاعبين
+// ============================================================
+
+model Warning {
+  id      String @id @default(cuid())
+  userId  String
+  gameId  String? // اللعبة التي سبّبت التحذير (اختياري)
+  reason  String
+  isRemoved Boolean @default(false) // Admin can remove
+
+  issuedAt  DateTime @default(now())
+  removedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+// ============================================================
+// BAN — حظر اللاعبين
+// ============================================================
+
+model Ban {
+  id     String  @id @default(cuid())
+  userId String
+  reason String
+  isManual Boolean @default(false) // true = admin banned manually
+
+  startsAt DateTime @default(now())
+  endsAt   DateTime // متى ينتهي الحظر
+  isLifted Boolean  @default(false) // Admin lifted the ban
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+// ============================================================
+// NOTIFICATION — إشعارات اللاعبين
+// ============================================================
+
+model Notification {
+  id         String           @id @default(cuid())
+  userId     String           // من يستقبل الإشعار
+  senderId   String?          // من أرسله (Admin أو النظام)
+  type       NotificationType
+  title      String
+  message    String
+  isRead     Boolean          @default(false)
+  data       Json?            // بيانات إضافية (gameId, etc.)
+
+  createdAt  DateTime         @default(now())
+
+  user   User  @relation(fields: [userId], references: [id])
+  sender User? @relation("NotificationSender", fields: [senderId], references: [id])
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
