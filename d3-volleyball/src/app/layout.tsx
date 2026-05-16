@@ -6,7 +6,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin", "latin-ext"], variable: "--font-inter" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "D3 Volleyball",
@@ -18,16 +18,13 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // ✅ Fix: wrap in try-catch so errors don't crash the whole app
   let locale = "en";
   let messages = {};
 
   try {
     locale = await getLocale();
     messages = await getMessages();
-  } catch (error) {
-    console.error("i18n setup error:", error);
-    // Fallback to English if i18n fails
+  } catch {
     locale = "en";
     try {
       messages = (await import("../../messages/en.json")).default;
@@ -39,12 +36,14 @@ export default async function RootLayout({
   const isArabic = locale === "ar";
 
   return (
-    <html lang={locale} dir={isArabic ? "rtl" : "ltr"}>
-      <body className={`${inter.variable} font-sans antialiased bg-slate-950`}>
+    // ✅ suppressHydrationWarning fixes font class mismatch between server/client
+    <html lang={locale} dir={isArabic ? "rtl" : "ltr"} suppressHydrationWarning>
+      <body
+        className={`${inter.variable} font-sans antialiased bg-slate-950`}
+        suppressHydrationWarning
+      >
         <NextIntlClientProvider messages={messages} locale={locale}>
-          <Providers>
-            {children}
-          </Providers>
+          <Providers>{children}</Providers>
         </NextIntlClientProvider>
         <Toaster
           position={isArabic ? "top-left" : "top-right"}

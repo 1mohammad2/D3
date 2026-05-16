@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus, Calendar, Users, Clock, Trash2, Loader2 } from "lucide-react";
@@ -70,6 +71,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function AdminGamesPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({
@@ -270,6 +272,16 @@ export default function AdminGamesPage() {
               </div>
 
               {/* Delete Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/admin/games/${game.id}/teams`)}
+                className="border-slate-700 text-slate-300 hover:text-white"
+              >
+                <Users className="h-4 w-4 mr-1" />
+                Teams
+              </Button>
+
               <Button
                 variant="outline"
                 size="sm"
