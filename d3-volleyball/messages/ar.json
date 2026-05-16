@@ -1,0 +1,56 @@
+{
+  "common": {
+    "appName": "D3 كرة طائرة",
+    "tagline": "لعبتك. مجتمعك.",
+    "loading": "جارٍ التحميل...",
+    "error": "حدث خطأ ما",
+    "retry": "حاول مجدداً",
+    "viewAll": "عرض الكل",
+    "register": "تسجيل",
+    "login": "تسجيل الدخول",
+    "logout": "تسجيل الخروج",
+    "days": "أيام",
+    "hours": "ساعات",
+    "minutes": "دقائق",
+    "seconds": "ثواني"
+  },
+  "nav": {
+    "home": "الرئيسية",
+    "games": "الألعاب",
+    "leaderboard": "المتصدرون",
+    "profile": "الملف الشخصي",
+    "admin": "لوحة التحكم"
+  },
+  "home": {
+    "heroTitle": "D3 كرة طائرة",
+    "heroSubtitle": "انضم للمجتمع. العب بجد. ارتقِ في الترتيب.",
+    "registerNow": "سجّل الآن",
+    "viewGames": "عرض الألعاب",
+    "nextGame": "اللعبة القادمة",
+    "registrationOpen": "التسجيل مفتوح الآن!",
+    "registrationOpensIn": "يفتح التسجيل خلال",
+    "gameStartsIn": "تبدأ اللعبة خلال",
+    "spotsAvailable": "مقعد متاح",
+    "spotsFull": "اكتملت المقاعد",
+    "waitingList": "في قائمة الانتظار",
+    "registerSpot": "احجز مقعدك",
+    "joinWaitlist": "انضم لقائمة الانتظار",
+    "noUpcomingGame": "لا توجد ألعاب قادمة",
+    "leaderboardTitle": "أفضل اللاعبين",
+    "leaderboardSubtitle": "الترتيب بناءً على الأداء",
+    "rank": "الترتيب",
+    "player": "اللاعب",
+    "score": "النقاط",
+    "games": "الألعاب",
+    "statsTitle": "إحصائيات المنصة",
+    "totalPlayers": "اللاعبون النشطون",
+    "totalGames": "الألعاب المنتهية",
+    "gamesThisMonth": "ألعاب هذا الشهر"
+  },
+  "skillLevel": {
+    "BEGINNER": "مبتدئ",
+    "INTERMEDIATE": "متوسط",
+    "ADVANCED": "متقدم",
+    "SETTER": "موزّع"
+  }
+}

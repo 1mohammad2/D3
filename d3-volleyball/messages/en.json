@@ -1,0 +1,56 @@
+{
+  "common": {
+    "appName": "D3 Volleyball",
+    "tagline": "Your Game. Your Community.",
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Try Again",
+    "viewAll": "View All",
+    "register": "Register",
+    "login": "Sign In",
+    "logout": "Sign Out",
+    "days": "Days",
+    "hours": "Hours",
+    "minutes": "Minutes",
+    "seconds": "Seconds"
+  },
+  "nav": {
+    "home": "Home",
+    "games": "Games",
+    "leaderboard": "Leaderboard",
+    "profile": "Profile",
+    "admin": "Admin Panel"
+  },
+  "home": {
+    "heroTitle": "D3 Volleyball",
+    "heroSubtitle": "Join the community. Play hard. Rise in the ranks.",
+    "registerNow": "Register Now",
+    "viewGames": "View Games",
+    "nextGame": "Next Game",
+    "registrationOpen": "Registration is Open!",
+    "registrationOpensIn": "Registration Opens In",
+    "gameStartsIn": "Game Starts In",
+    "spotsAvailable": "spots available",
+    "spotsFull": "All spots filled",
+    "waitingList": "on waiting list",
+    "registerSpot": "Reserve Your Spot",
+    "joinWaitlist": "Join Waiting List",
+    "noUpcomingGame": "No upcoming games scheduled",
+    "leaderboardTitle": "Top Players",
+    "leaderboardSubtitle": "Rankings based on performance",
+    "rank": "Rank",
+    "player": "Player",
+    "score": "Score",
+    "games": "Games",
+    "statsTitle": "Platform Stats",
+    "totalPlayers": "Active Players",
+    "totalGames": "Games Played",
+    "gamesThisMonth": "Games This Month"
+  },
+  "skillLevel": {
+    "BEGINNER": "Beginner",
+    "INTERMEDIATE": "Intermediate",
+    "ADVANCED": "Advanced",
+    "SETTER": "Setter"
+  }
+}
