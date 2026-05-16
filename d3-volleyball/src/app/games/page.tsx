@@ -1,4 +1,6 @@
 "use client";
+// ✅ import عادي — games/page هو Client Component فعلاً
+import { CountdownTimer } from "@/components/home/countdown-timer";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
@@ -11,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/shared/navbar";
 import { getStatusConfig, canCancelRegistration } from "@/lib/game-utils";
-import { CountdownTimer } from "@/components/home/countdown-timer";
 
 // ── Types ──────────────────────────────────────────────────────
 type GameData = {

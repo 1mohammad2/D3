@@ -1,10 +1,14 @@
+
 import { Suspense } from "react";
 import Link from "next/link";
 import { getTranslations, getLocale } from "next-intl/server";
 import { motion } from "framer-motion";
-import { Navbar } from "@/components/shared/navbar";
+// ✅ import عادي — يعمل مع Server Components
 import { CountdownTimer } from "@/components/home/countdown-timer";
+import { Navbar } from "@/components/shared/navbar";
 import { Button } from "@/components/ui/button";
+
+
 import {
   Trophy, Users, Calendar, ChevronRight,
   Zap, Clock, CheckCircle
