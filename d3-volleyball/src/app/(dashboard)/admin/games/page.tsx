@@ -347,7 +347,21 @@ export default function AdminGamesPage() {
                       Players
                     </Link>
                   </Button>
+                  {/* Attendance button — show only for past/completed games */}
+                  {/* Attendance button — show only for past/completed games */}
 
+                   {/* Attendance button — show only for past/completed games */}
+                  <Button
+                     asChild
+                      variant="outline"
+                       size="sm"
+                        className="border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 h-9">
+
+                        <Link href={`/admin/games/${game.id}/attendance`}>
+                         <Users className="h-3.5 w-3.5 mr-1.5" />
+                         Attendance
+                        </Link>
+                  </Button>
                   {/* Delete button */}
                   <Button
                     variant="outline"
