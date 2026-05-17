@@ -4,13 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
-  LayoutDashboard,
-  Users,
-  Calendar,
-  Trophy,
-  Bell,
-  LogOut,
-  Shield,
+  LayoutDashboard, Users, Calendar,
+  Trophy, Bell, LogOut, Shield, BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,6 +15,7 @@ const adminLinks = [
   { href: "/admin/players", label: "Players", icon: Users },
   { href: "/admin/games", label: "Games", icon: Calendar },
   { href: "/admin/teams", label: "Teams", icon: Trophy },
+  { href: "/admin/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/admin/notifications", label: "Notifications", icon: Bell },
 ];
 
@@ -35,14 +31,18 @@ export function Sidebar() {
           <span className="text-white font-black text-xl">
             D<span className="text-orange-500">3</span>
           </span>
-          <span className="text-slate-400 text-sm ml-1">Admin</span>
+          <span className="text-slate-400 text-sm ms-1">Admin</span>
         </div>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
         {adminLinks.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href;
+          // Active if exact match or starts with path (for sub-pages)
+          const isActive =
+            pathname === href ||
+            (href !== "/admin" && pathname.startsWith(href));
+
           return (
             <Link
               key={href}
@@ -54,7 +54,7 @@ export function Sidebar() {
                   : "text-slate-400 hover:text-white hover:bg-slate-800"
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-4 w-4 shrink-0" />
               {label}
             </Link>
           );
