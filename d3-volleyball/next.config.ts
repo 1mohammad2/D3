@@ -1,13 +1,12 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "res.cloudinary.com" },
       { protocol: "https", hostname: "avatars.githubusercontent.com" },
     ],
   },
-  // ── Security Headers ────────────────────────────────────────
+
   async headers() {
     return [
       {
@@ -31,5 +30,6 @@ const nextConfig: NextConfig = {
   },
 };
 
+// ✅ Fix: use require() only — no mixing with import/export
 const withNextIntl = require("next-intl/plugin")();
 module.exports = withNextIntl(nextConfig);
