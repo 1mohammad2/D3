@@ -1,9 +1,8 @@
 "use client";
-// ✅ import عادي — games/page هو Client Component فعلاً
-import { CountdownTimer } from "@/components/home/countdown-timer";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
+import { useEffect } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import {
@@ -13,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/shared/navbar";
 import { getStatusConfig, canCancelRegistration } from "@/lib/game-utils";
+import { CountdownTimer } from "@/components/home/countdown-timer";
 
 // ── Types ──────────────────────────────────────────────────────
 type GameData = {
@@ -29,17 +29,25 @@ type GameData = {
   userWaitingPosition: number | null;
 };
 
+type LiveGame = {
+  id: string;
+  confirmedCount: number;
+  waitingCount: number;
+  availableSpots: number;
+  status: string;
+};
+
 // ── Status Badge ───────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
   const config = getStatusConfig(status);
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-        text-xs font-medium border ${config.color}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${config.color}`}
     >
       <span
-        className={`w-1.5 h-1.5 rounded-full ${config.dot}
-          ${status === "REGISTRATION_OPEN" ? "animate-pulse" : ""}`}
+        className={`w-1.5 h-1.5 rounded-full ${config.dot} ${
+          status === "REGISTRATION_OPEN" ? "animate-pulse" : ""
+        }`}
       />
       {config.label}
     </span>
@@ -69,7 +77,7 @@ function GameCard({
 
   return (
     <div className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-6 transition-colors">
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div>
           <StatusBadge status={game.status} />
@@ -89,7 +97,7 @@ function GameCard({
           </p>
         </div>
 
-        {/* User status pill */}
+        {/* User status pills */}
         {isRegistered && (
           <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded-full text-xs font-medium shrink-0">
             <CheckCircle className="h-3.5 w-3.5" />
@@ -99,12 +107,12 @@ function GameCard({
         {isWaitlisted && (
           <span className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-full text-xs font-medium shrink-0">
             <Clock className="h-3.5 w-3.5" />
-            #{game.userWaitingPosition} on Waitlist
+            #{game.userWaitingPosition} Waiting
           </span>
         )}
       </div>
 
-      {/* Countdown timer */}
+      {/* Countdown */}
       {(isOpen || isUpcoming) && (
         <div className="mb-5">
           <p className="text-slate-500 text-xs mb-2 uppercase tracking-wider text-center">
@@ -121,7 +129,7 @@ function GameCard({
         <div className="flex justify-between text-sm mb-1.5">
           <span className="text-slate-400 flex items-center gap-1.5">
             <Users className="h-3.5 w-3.5" />
-            {game.confirmedCount} / {game.maxPlayers} players
+            {game.confirmedCount} / {game.maxPlayers} registered
           </span>
           {game.waitingCount > 0 && (
             <span className="text-orange-400 text-xs">
@@ -132,20 +140,30 @@ function GameCard({
         <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-500 ${
-              isFull ? "bg-yellow-500" : "bg-gradient-to-r from-orange-500 to-orange-400"
+              isFull
+                ? "bg-yellow-500"
+                : "bg-gradient-to-r from-orange-500 to-orange-400"
             }`}
             style={{
-              width: `${(game.confirmedCount / game.maxPlayers) * 100}%`,
+              width: `${Math.min(
+                (game.confirmedCount / game.maxPlayers) * 100,
+                100
+              )}%`,
             }}
           />
         </div>
+        <p className="text-slate-600 text-xs mt-1">
+          {game.availableSpots > 0
+            ? `${game.availableSpots} spots remaining`
+            : "All spots filled"}
+        </p>
       </div>
 
-      {/* Action button */}
+      {/* Action buttons */}
       {!isLoggedIn && (
         <Button
           asChild
-          className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+          className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold"
         >
           <Link href="/login">Login to Register</Link>
         </Button>
@@ -223,6 +241,7 @@ export default function GamesPage() {
   const { data: session } = useSession();
   const queryClient = useQueryClient();
 
+  // Main games data
   const { data, isLoading } = useQuery({
     queryKey: ["games"],
     queryFn: async () => {
@@ -233,6 +252,44 @@ export default function GamesPage() {
     refetchInterval: 30000,
   });
 
+  // Live spot counts — lightweight polling
+  const { data: liveData } = useQuery({
+    queryKey: ["games-live"],
+    queryFn: async () => {
+      const res = await fetch("/api/games/live");
+      if (!res.ok) return { games: [] };
+      return res.json() as Promise<{ games: LiveGame[] }>;
+    },
+    refetchInterval: 20000,
+    refetchIntervalInBackground: true,
+    staleTime: 15000,
+  });
+
+  // Merge live data into main games data
+  useEffect(() => {
+    if (!liveData?.games?.length) return;
+    queryClient.setQueryData(
+      ["games"],
+      (old: { games: GameData[] } | undefined) => {
+        if (!old?.games) return old;
+        return {
+          ...old,
+          games: old.games.map((game) => {
+            const live = liveData.games.find((g: LiveGame) => g.id === game.id);
+            if (!live) return game;
+            return {
+              ...game,
+              confirmedCount: live.confirmedCount,
+              waitingCount: live.waitingCount,
+              availableSpots: live.availableSpots,
+              status: live.status,
+            };
+          }),
+        };
+      }
+    );
+  }, [liveData, queryClient]);
+
   const registerMutation = useMutation({
     mutationFn: async (gameId: string) => {
       const res = await fetch(`/api/games/${gameId}/register`, {
@@ -242,11 +299,12 @@ export default function GamesPage() {
       if (!res.ok) throw new Error(result.error ?? "Registration failed");
       return result;
     },
-    onSuccess: (data) => {
-      toast.success(data.message);
+    onSuccess: (d) => {
+      toast.success(d.message);
       queryClient.invalidateQueries({ queryKey: ["games"] });
+      queryClient.invalidateQueries({ queryKey: ["games-live"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const cancelMutation = useMutation({
@@ -258,11 +316,12 @@ export default function GamesPage() {
       if (!res.ok) throw new Error(result.error ?? "Cancellation failed");
       return result;
     },
-    onSuccess: (data) => {
-      toast.success(data.message);
+    onSuccess: (d) => {
+      toast.success(d.message);
       queryClient.invalidateQueries({ queryKey: ["games"] });
+      queryClient.invalidateQueries({ queryKey: ["games-live"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const games: GameData[] = data?.games ?? [];
@@ -272,6 +331,7 @@ export default function GamesPage() {
     <div className="min-h-screen bg-slate-950">
       <Navbar />
       <div className="max-w-4xl mx-auto px-4 pt-24 pb-16">
+
         {/* Header */}
         <div className="mb-10">
           <h1 className="text-4xl font-black text-white flex items-center gap-3">
@@ -283,18 +343,24 @@ export default function GamesPage() {
           </p>
         </div>
 
-        {/* Content */}
-        {isLoading ? (
+        {/* Loading */}
+        {isLoading && (
           <div className="flex justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
           </div>
-        ) : games.length === 0 ? (
+        )}
+
+        {/* Empty */}
+        {!isLoading && games.length === 0 && (
           <div className="text-center py-20 text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800">
             <Calendar className="h-14 w-14 mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">No upcoming games</p>
             <p className="text-sm mt-1">Check back soon!</p>
           </div>
-        ) : (
+        )}
+
+        {/* Games Grid */}
+        {!isLoading && games.length > 0 && (
           <div className="grid gap-6 md:grid-cols-2">
             {games.map((game) => (
               <GameCard
@@ -309,6 +375,7 @@ export default function GamesPage() {
           </div>
         )}
 
+        {/* Admin link */}
         {session?.user?.role === "ADMIN" && (
           <div className="mt-8 text-center">
             <Link

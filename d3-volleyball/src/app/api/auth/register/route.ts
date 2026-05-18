@@ -2,13 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { registerSchema } from "@/lib/validations/auth";
+import { registerRateLimit } from "@/lib/rate-limit";
+import { tooManyRequests } from "@/lib/api-response";
 
 export async function POST(req: NextRequest) {
+  // ✅ Rate limit by IP
+  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+  const limit = registerRateLimit(ip);
+
+  if (!limit.success) {
+    return tooManyRequests(limit.resetAt);
+  }
+
   try {
     const body = await req.json();
-
-    // 1. Validate request body
     const parsed = registerSchema.safeParse(body);
+
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid data", details: parsed.error.flatten().fieldErrors },
@@ -16,9 +25,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { fullName, nickname, email, phone, password, gender, skillLevel } = parsed.data;
+    const { fullName, nickname, email, phone, password, gender, skillLevel } =
+      parsed.data;
 
-    // 2. Check for duplicate email
     const existingEmail = await db.user.findUnique({ where: { email } });
     if (existingEmail) {
       return NextResponse.json(
@@ -27,21 +36,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Check for duplicate phone
     if (phone) {
       const existingPhone = await db.user.findUnique({ where: { phone } });
       if (existingPhone) {
         return NextResponse.json(
-          { error: "An account with this phone number already exists" },
+          { error: "An account with this phone already exists" },
           { status: 409 }
         );
       }
     }
 
-    // 4. Hash password — NEVER store plain text passwords
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // 5. Create user — isApproved: false (needs admin approval)
     const user = await db.user.create({
       data: {
         fullName,
@@ -51,24 +57,14 @@ export async function POST(req: NextRequest) {
         password: hashedPassword,
         gender,
         skillLevel,
-        isApproved: false, // Admin must approve
+        isApproved: false,
         role: "PLAYER",
       },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        isApproved: true,
-      },
+      select: { id: true, fullName: true, email: true },
     });
 
-    // TODO Phase 16: Send notification to admin about new registration
-
     return NextResponse.json(
-      {
-        message: "Registration successful! Please wait for admin approval.",
-        user,
-      },
+      { message: "Registration submitted! Waiting for admin approval.", user },
       { status: 201 }
     );
   } catch (error) {
