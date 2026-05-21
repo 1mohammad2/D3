@@ -1,18 +1,15 @@
 "use client";
-
+import { getStatusConfig } from "@/lib/game-utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
-import { useEffect } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import {
-  Calendar, Users, Clock, CheckCircle,
-  Loader2, ChevronRight, Zap,
+  Calendar, Users, Clock,
+  CheckCircle, Loader2, Zap, ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/shared/navbar";
-import { getStatusConfig, canCancelRegistration } from "@/lib/game-utils";
-import { CountdownTimer } from "@/components/home/countdown-timer";
 
 // ── Types ──────────────────────────────────────────────────────
 type GameData = {
@@ -29,32 +26,22 @@ type GameData = {
   userWaitingPosition: number | null;
 };
 
-type LiveGame = {
-  id: string;
-  confirmedCount: number;
-  waitingCount: number;
-  availableSpots: number;
-  status: string;
-};
-
 // ── Status Badge ───────────────────────────────────────────────
+
 function StatusBadge({ status }: { status: string }) {
-  const config = getStatusConfig(status);
+  const style = getStatusConfig(status);
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${config.color}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${style.color}`}
     >
-      <span
-        className={`w-1.5 h-1.5 rounded-full ${config.dot} ${
-          status === "REGISTRATION_OPEN" ? "animate-pulse" : ""
-        }`}
-      />
-      {config.label}
+      <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+      {style.label}
     </span>
   );
 }
 
-// ── Single Game Card ───────────────────────────────────────────
+
+// ── Game Card ──────────────────────────────────────────────────
 function GameCard({
   game,
   onRegister,
@@ -70,14 +57,18 @@ function GameCard({
 }) {
   const isRegistered = game.userRegistrationStatus === "CONFIRMED";
   const isWaitlisted = game.userWaitingPosition !== null;
-  const canCancel = canCancelRegistration(new Date(game.date));
   const isOpen = game.status === "REGISTRATION_OPEN";
   const isFull = game.status === "FULL";
   const isUpcoming = game.status === "UPCOMING";
 
+  // Can cancel only if > 4 hours before game
+  const hoursUntilGame =
+    (new Date(game.date).getTime() - Date.now()) / (1000 * 60 * 60);
+  const canCancel = hoursUntilGame > 4;
+
   return (
     <div className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-6 transition-colors">
-      {/* Header */}
+      {/* Status + Date */}
       <div className="flex items-start justify-between mb-4">
         <div>
           <StatusBadge status={game.status} />
@@ -97,7 +88,7 @@ function GameCard({
           </p>
         </div>
 
-        {/* User status pills */}
+        {/* User status */}
         {isRegistered && (
           <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded-full text-xs font-medium shrink-0">
             <CheckCircle className="h-3.5 w-3.5" />
@@ -107,20 +98,25 @@ function GameCard({
         {isWaitlisted && (
           <span className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-full text-xs font-medium shrink-0">
             <Clock className="h-3.5 w-3.5" />
-            #{game.userWaitingPosition} Waiting
+            #{game.userWaitingPosition} Waitlist
           </span>
         )}
       </div>
 
-      {/* Countdown */}
-      {(isOpen || isUpcoming) && (
-        <div className="mb-5">
-          <p className="text-slate-500 text-xs mb-2 uppercase tracking-wider text-center">
-            {isUpcoming ? "Registration opens in" : "Game starts in"}
+      {/* Registration opens info for upcoming */}
+      {isUpcoming && (
+        <div className="mb-4 p-3 bg-slate-800/50 rounded-lg">
+          <p className="text-slate-400 text-xs">
+            📅 Registration opens:{" "}
+            <span className="text-white font-medium">
+              {new Date(game.registrationOpensAt).toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
           </p>
-          <CountdownTimer
-            targetDate={isUpcoming ? game.registrationOpensAt : game.date}
-          />
         </div>
       )}
 
@@ -129,7 +125,7 @@ function GameCard({
         <div className="flex justify-between text-sm mb-1.5">
           <span className="text-slate-400 flex items-center gap-1.5">
             <Users className="h-3.5 w-3.5" />
-            {game.confirmedCount} / {game.maxPlayers} registered
+            {game.confirmedCount}/{game.maxPlayers} registered
           </span>
           {game.waitingCount > 0 && (
             <span className="text-orange-400 text-xs">
@@ -159,7 +155,7 @@ function GameCard({
         </p>
       </div>
 
-      {/* Action buttons */}
+      {/* Action button */}
       {!isLoggedIn && (
         <Button
           asChild
@@ -210,7 +206,7 @@ function GameCard({
           ) : (
             <Zap className="h-4 w-4 mr-2" />
           )}
-          Register — {game.availableSpots} spots left
+          Register Now — {game.availableSpots} spots left
         </Button>
       )}
 
@@ -241,8 +237,7 @@ export default function GamesPage() {
   const { data: session } = useSession();
   const queryClient = useQueryClient();
 
-  // Main games data
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["games"],
     queryFn: async () => {
       const res = await fetch("/api/games");
@@ -250,45 +245,8 @@ export default function GamesPage() {
       return res.json();
     },
     refetchInterval: 30000,
+    retry: 2,
   });
-
-  // Live spot counts — lightweight polling
-  const { data: liveData } = useQuery({
-    queryKey: ["games-live"],
-    queryFn: async () => {
-      const res = await fetch("/api/games/live");
-      if (!res.ok) return { games: [] };
-      return res.json() as Promise<{ games: LiveGame[] }>;
-    },
-    refetchInterval: 20000,
-    refetchIntervalInBackground: true,
-    staleTime: 15000,
-  });
-
-  // Merge live data into main games data
-  useEffect(() => {
-    if (!liveData?.games?.length) return;
-    queryClient.setQueryData(
-      ["games"],
-      (old: { games: GameData[] } | undefined) => {
-        if (!old?.games) return old;
-        return {
-          ...old,
-          games: old.games.map((game) => {
-            const live = liveData.games.find((g: LiveGame) => g.id === game.id);
-            if (!live) return game;
-            return {
-              ...game,
-              confirmedCount: live.confirmedCount,
-              waitingCount: live.waitingCount,
-              availableSpots: live.availableSpots,
-              status: live.status,
-            };
-          }),
-        };
-      }
-    );
-  }, [liveData, queryClient]);
 
   const registerMutation = useMutation({
     mutationFn: async (gameId: string) => {
@@ -302,7 +260,6 @@ export default function GamesPage() {
     onSuccess: (d) => {
       toast.success(d.message);
       queryClient.invalidateQueries({ queryKey: ["games"] });
-      queryClient.invalidateQueries({ queryKey: ["games-live"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -319,7 +276,6 @@ export default function GamesPage() {
     onSuccess: (d) => {
       toast.success(d.message);
       queryClient.invalidateQueries({ queryKey: ["games"] });
-      queryClient.invalidateQueries({ queryKey: ["games-live"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -331,7 +287,6 @@ export default function GamesPage() {
     <div className="min-h-screen bg-slate-950">
       <Navbar />
       <div className="max-w-4xl mx-auto px-4 pt-24 pb-16">
-
         {/* Header */}
         <div className="mb-10">
           <h1 className="text-4xl font-black text-white flex items-center gap-3">
@@ -350,8 +305,27 @@ export default function GamesPage() {
           </div>
         )}
 
+        {/* Error */}
+        {error && !isLoading && (
+          <div className="text-center py-20 bg-red-500/10 border border-red-500/30 rounded-2xl">
+            <p className="text-red-400 font-medium">Failed to load games</p>
+            <p className="text-slate-500 text-sm mt-1">
+              Please refresh the page
+            </p>
+            <Button
+              onClick={() =>
+                queryClient.invalidateQueries({ queryKey: ["games"] })
+              }
+              variant="outline"
+              className="mt-4 border-slate-700 text-slate-400"
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+
         {/* Empty */}
-        {!isLoading && games.length === 0 && (
+        {!isLoading && !error && games.length === 0 && (
           <div className="text-center py-20 text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800">
             <Calendar className="h-14 w-14 mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">No upcoming games</p>
@@ -360,7 +334,7 @@ export default function GamesPage() {
         )}
 
         {/* Games Grid */}
-        {!isLoading && games.length > 0 && (
+        {!isLoading && !error && games.length > 0 && (
           <div className="grid gap-6 md:grid-cols-2">
             {games.map((game) => (
               <GameCard

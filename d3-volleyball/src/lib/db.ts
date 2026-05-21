@@ -14,6 +14,7 @@ export const db =
         : ["error"],
   });
 
+
 if (process.env.NODE_ENV !== "production") {
   globalThis.prisma = db;
 }

@@ -5,6 +5,9 @@ import bcrypt from "bcryptjs";
 import { loginSchema } from "@/lib/validations/auth";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // ✅ Fix CSRF error in production (Vercel)
+  trustHost: true,
+
   session: { strategy: "jwt" },
 
   pages: {
@@ -21,13 +24,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
 
       async authorize(credentials) {
-        // 1. Validate shape
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
 
         const { email, password } = parsed.data;
 
-        // 2. Find user
         const user = await db.user.findUnique({
           where: { email },
           select: {
@@ -46,19 +47,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (!user) return null;
 
-        // 3. Verify password
         const passwordMatch = await bcrypt.compare(password, user.password);
         if (!passwordMatch) return null;
 
-        // 4. Check ban
         if (user.isBanned) throw new Error("BANNED");
 
-        // 5. Check approval (admin bypasses this)
         if (!user.isApproved && user.role !== "ADMIN") {
           throw new Error("PENDING_APPROVAL");
         }
 
-        // ← Return object must match our extended User interface
         return {
           id: user.id,
           email: user.email,
@@ -74,7 +71,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
 
   callbacks: {
-    // Store custom fields in JWT token
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
@@ -86,7 +82,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
 
-    // Pass JWT fields to session
     async session({ session, token }) {
       session.user.id = token.id;
       session.user.role = token.role;

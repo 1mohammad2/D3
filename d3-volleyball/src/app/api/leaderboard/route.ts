@@ -2,28 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { calculateWinRate } from "@/lib/ranking";
 
+// Keep API safe from expensive/unbounded queries.
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 200;
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const skillFilter = searchParams.get("skill"); // optional filter
-  const limit = parseInt(searchParams.get("limit") ?? "50");
 
-  // Build where clause
-  type WhereClause = {
-    role: string;
-    isApproved: boolean;
-    isBanned: boolean;
-    skillLevel?: string;
-  };
+  const rawSkill = searchParams.get("skill");
+  const limitParam = searchParams.get("limit");
 
-  const where: WhereClause = {
-    role: "PLAYER",
+  const limitNum = Number.parseInt(limitParam ?? String(DEFAULT_LIMIT), 10);
+  const limit = Number.isFinite(limitNum)
+    ? Math.min(Math.max(limitNum, 1), MAX_LIMIT)
+    : DEFAULT_LIMIT;
+
+  // Validate/whitelist skill values.
+  // This must match the Prisma enum type for `User.skillLevel`.
+  // If the frontend sends "ALL", skip the filter.
+  const allowedSkills = new Set([
+    "BEGINNER",
+    "INTERMEDIATE",
+    "ADVANCED",
+    "SETTER",
+  ]);
+
+  const skillFilter =
+    rawSkill && rawSkill !== "ALL" && allowedSkills.has(rawSkill)
+      ? rawSkill
+      : undefined;
+
+  const where = {
+    role: "PLAYER" as const,
     isApproved: true,
     isBanned: false,
+    ...(skillFilter
+  ? { skillLevel: skillFilter as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "SETTER" }
+  : {}),
   };
 
-  if (skillFilter && skillFilter !== "ALL") {
-    where.skillLevel = skillFilter;
-  }
 
   const players = await db.user.findMany({
     where,

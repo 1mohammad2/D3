@@ -199,8 +199,9 @@ export async function DELETE(
     return NextResponse.json({ message: "Removed from waiting list." });
   }
 
-  // Cancel confirmed registration
-  await db.registration.update({
+// Cancel confirmed registration + auto-promote first person on waitlist
+await db.$transaction(async (tx) => {
+  await tx.registration.update({
     where: { userId_gameId: { userId, gameId } },
     data: {
       status: "CANCELLED",
@@ -209,9 +210,52 @@ export async function DELETE(
     },
   });
 
-  // TODO Phase 8: Notify first person on waiting list
-
-  return NextResponse.json({
-    message: "Registration cancelled successfully.",
+  // Find the first person waiting
+  const firstWaiting = await tx.waitingList.findFirst({
+    where: { gameId, isPromoted: false },
+    orderBy: { position: "asc" },
   });
-}
+
+  if (firstWaiting) {
+    // Give them the now-open spot
+    await tx.registration.create({
+      data: {
+        userId: firstWaiting.userId,
+        gameId,
+        status: "CONFIRMED",
+      },
+    });
+
+    // Mark them as promoted in the waitlist
+    await tx.waitingList.update({
+      where: { id: firstWaiting.id },
+      data: { isPromoted: true, promotedAt: new Date() },
+    });
+
+    // Shift everyone else up by 1 position
+    await tx.waitingList.updateMany({
+      where: {
+        gameId,
+        isPromoted: false,
+        position: { gt: firstWaiting.position },
+      },
+      data: { position: { decrement: 1 } },
+    });
+
+    // Notify the promoted player
+    await tx.notification.create({
+      data: {
+        userId: firstWaiting.userId,
+        type: "MOVED_FROM_WAITLIST",
+        title: "You got a spot! 🏐",
+        message:
+          "A spot opened up and you have been automatically registered for the game!",
+        data: { gameId },
+      },
+    });
+  }
+});
+
+return NextResponse.json({
+  message: "Registration cancelled successfully.",
+});}

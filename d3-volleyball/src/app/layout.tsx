@@ -13,6 +13,7 @@ export const metadata: Metadata = {
   description: "Professional Volleyball Game Management Platform",
 };
 
+// ✅ Only ONE layout.tsx should have <html> and <body> — this one
 export default async function RootLayout({
   children,
 }: {
@@ -36,8 +37,11 @@ export default async function RootLayout({
   const isArabic = locale === "ar";
 
   return (
-    // ✅ suppressHydrationWarning fixes font class mismatch between server/client
-    <html lang={locale} dir={isArabic ? "rtl" : "ltr"} suppressHydrationWarning>
+    <html
+      lang={locale}
+      dir={isArabic ? "rtl" : "ltr"}
+      suppressHydrationWarning
+    >
       <body
         className={`${inter.variable} font-sans antialiased bg-slate-950`}
         suppressHydrationWarning

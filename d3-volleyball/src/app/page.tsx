@@ -1,34 +1,131 @@
-
 import { Suspense } from "react";
 import Link from "next/link";
 import { getTranslations, getLocale } from "next-intl/server";
-import { motion } from "framer-motion";
-// ✅ import عادي — يعمل مع Server Components
 import { CountdownTimer } from "@/components/home/countdown-timer";
 import { Navbar } from "@/components/shared/navbar";
 import { Button } from "@/components/ui/button";
-
-
+import { db } from "@/lib/db";
 import {
   Trophy, Users, Calendar, ChevronRight,
-  Zap, Clock, CheckCircle
+  Zap, Clock, CheckCircle,
 } from "lucide-react";
 
-// Fetch home data from our API
-async function getHomeData() {
+// ── Types ──────────────────────────────────────────────────────
+type HomeStats = {
+  totalPlayers: number;
+  totalGames: number;
+};
+
+type NextGame = {
+  id: string;
+  date: Date;
+  status: string;
+  maxPlayers: number;
+  registrationOpensAt: Date;
+  confirmedCount: number;
+  waitingCount: number;
+  availableSpots: number;
+};
+
+type TopPlayer = {
+  id: string;
+  fullName: string;
+  nickname: string | null;
+  rankingScore: number;
+  gamesPlayed: number;
+  wins: number;
+  skillLevel: string;
+  profilePhoto: string | null;
+};
+
+type HomeData = {
+  nextGame: NextGame | null;
+  topPlayers: TopPlayer[];
+  stats: HomeStats;
+};
+
+// ── Fetch data directly from DB (server component — no fetch needed) ──
+async function getHomeData(): Promise<HomeData> {
   try {
-    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/home`, {
-      next: { revalidate: 60 }, // Cache for 60 seconds
-    });
-    if (!res.ok) return null;
-    return res.json();
+    const now = new Date();
+
+    const [nextGameRaw, topPlayers, totalPlayers, totalGames] =
+      await Promise.all([
+        db.game.findFirst({
+          where: {
+            status: { in: ["UPCOMING", "REGISTRATION_OPEN", "FULL"] },
+            date: { gte: now },
+          },
+          orderBy: { date: "asc" },
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            maxPlayers: true,
+            registrationOpensAt: true,
+            _count: {
+              select: {
+                registrations: { where: { status: "CONFIRMED" } },
+                waitingList: { where: { isPromoted: false } },
+              },
+            },
+          },
+        }),
+
+        db.user.findMany({
+          where: { role: "PLAYER", isApproved: true, isBanned: false },
+          orderBy: { rankingScore: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            fullName: true,
+            nickname: true,
+            rankingScore: true,
+            gamesPlayed: true,
+            wins: true,
+            skillLevel: true,
+            profilePhoto: true,
+          },
+        }),
+
+        db.user.count({
+          where: { role: "PLAYER", isApproved: true, isBanned: false },
+        }),
+
+        db.game.count({ where: { status: "COMPLETED" } }),
+      ]);
+
+    const nextGame: NextGame | null = nextGameRaw
+      ? {
+          id: nextGameRaw.id,
+          date: nextGameRaw.date,
+          status: nextGameRaw.status,
+          maxPlayers: nextGameRaw.maxPlayers,
+          registrationOpensAt: nextGameRaw.registrationOpensAt,
+          confirmedCount: nextGameRaw._count.registrations,
+          waitingCount: nextGameRaw._count.waitingList,
+          availableSpots: Math.max(
+            0,
+            nextGameRaw.maxPlayers - nextGameRaw._count.registrations
+          ),
+        }
+      : null;
+
+    return {
+      nextGame,
+      topPlayers,
+      stats: { totalPlayers, totalGames },
+    };
   } catch {
-    return null;
+    return {
+      nextGame: null,
+      topPlayers: [],
+      stats: { totalPlayers: 0, totalGames: 0 },
+    };
   }
 }
 
-// Skill level color mapping
+// ── Skill level color mapping ───────────────────────────────────
 const skillColors: Record<string, string> = {
   BEGINNER: "text-green-400 bg-green-400/10",
   INTERMEDIATE: "text-blue-400 bg-blue-400/10",
@@ -36,7 +133,7 @@ const skillColors: Record<string, string> = {
   SETTER: "text-orange-400 bg-orange-400/10",
 };
 
-// Rank badge for top 3
+// ── Rank badge for top 3 ────────────────────────────────────────
 function RankBadge({ rank }: { rank: number }) {
   if (rank === 1) return <span className="text-2xl">🥇</span>;
   if (rank === 2) return <span className="text-2xl">🥈</span>;
@@ -48,25 +145,26 @@ function RankBadge({ rank }: { rank: number }) {
   );
 }
 
+// ── Page ────────────────────────────────────────────────────────
 export default async function HomePage() {
   const t = await getTranslations("home");
   const tCommon = await getTranslations("common");
   const tSkill = await getTranslations("skillLevel");
   const locale = await getLocale();
-  const data = await getHomeData();
-
-  const { nextGame, topPlayers = [], stats = {} } = data ?? {};
+  const { nextGame, topPlayers, stats } = await getHomeData();
 
   const now = new Date();
   const registrationOpen = nextGame?.status === "REGISTRATION_OPEN";
   const gameIsFull = nextGame?.status === "FULL";
   const registrationNotYetOpen =
-    nextGame && new Date(nextGame.registrationOpensAt) > now;
+    nextGame !== null && nextGame.registrationOpensAt > now;
 
-  // Determine countdown target
-  const countdownTarget = registrationNotYetOpen
-    ? nextGame.registrationOpensAt
-    : nextGame?.date;
+  // CountdownTimer expects a string — convert Date to ISO string
+  const countdownTarget: string | null = nextGame
+    ? registrationNotYetOpen
+      ? nextGame.registrationOpensAt.toISOString()
+      : nextGame.date.toISOString()
+    : null;
 
   const countdownLabel = registrationNotYetOpen
     ? t("registrationOpensIn")
@@ -76,7 +174,7 @@ export default async function HomePage() {
     <div className="min-h-screen bg-slate-950" dir={locale === "ar" ? "rtl" : "ltr"}>
       <Navbar />
 
-      {/* ── HERO SECTION ────────────────────────────────── */}
+      {/* ── HERO SECTION ──────────────────────────────────────── */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
 
         {/* Animated background grid */}
@@ -95,7 +193,6 @@ export default async function HomePage() {
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-orange-600/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
-          {/* Volleyball emoji with pulse */}
           <div className="text-7xl mb-6 inline-block animate-pulse-slow">🏐</div>
 
           <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black text-white leading-none mb-4">
@@ -135,7 +232,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── NEXT GAME CARD ───────────────────────────────── */}
+      {/* ── NEXT GAME CARD ────────────────────────────────────── */}
       <section className="py-20 px-4">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-3xl font-black text-white text-center mb-10 flex items-center justify-center gap-3">
@@ -152,13 +249,13 @@ export default async function HomePage() {
               {/* Game date */}
               <div className="text-center mb-8">
                 <p className="text-slate-400 text-sm uppercase tracking-widest mb-1">
-                  {new Date(nextGame.date).toLocaleDateString(
+                  {nextGame.date.toLocaleDateString(
                     locale === "ar" ? "ar-AE" : "en-US",
                     { weekday: "long", year: "numeric", month: "long", day: "numeric" }
                   )}
                 </p>
                 <p className="text-white text-xl font-semibold">
-                  {new Date(nextGame.date).toLocaleTimeString(
+                  {nextGame.date.toLocaleTimeString(
                     locale === "ar" ? "ar-AE" : "en-US",
                     { hour: "2-digit", minute: "2-digit" }
                   )}
@@ -181,6 +278,7 @@ export default async function HomePage() {
                   <p className="text-slate-400 text-sm text-center mb-4 uppercase tracking-wider">
                     {countdownLabel}
                   </p>
+                  {/* targetDate is now always a string — type matches CountdownTimer */}
                   <CountdownTimer targetDate={countdownTarget} />
                 </div>
               )}
@@ -200,7 +298,10 @@ export default async function HomePage() {
                     <div
                       className="h-full bg-gradient-to-r from-orange-500 to-orange-400 rounded-full transition-all duration-500"
                       style={{
-                        width: `${(nextGame.confirmedCount / nextGame.maxPlayers) * 100}%`,
+                        width: `${Math.min(
+                          (nextGame.confirmedCount / nextGame.maxPlayers) * 100,
+                          100
+                        )}%`,
                       }}
                     />
                   </div>
@@ -240,7 +341,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── LEADERBOARD PREVIEW ───────────────────────────── */}
+      {/* ── LEADERBOARD PREVIEW ───────────────────────────────── */}
       <section className="py-20 px-4 bg-slate-900/30">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center justify-between mb-10">
@@ -267,28 +368,21 @@ export default async function HomePage() {
                 <p>No rankings yet</p>
               </div>
             ) : (
-              topPlayers.map((player: {
-                id: string;
-                fullName: string;
-                nickname: string | null;
-                rankingScore: number;
-                gamesPlayed: number;
-                skillLevel: string;
-              }, index: number) => (
+              topPlayers.map((player, index) => (
                 <div
                   key={player.id}
-                  className={`flex items-center gap-4 p-4 rounded-xl border transition-colors
-                    ${index === 0
+                  className={`flex items-center gap-4 p-4 rounded-xl border transition-colors ${
+                    index === 0
                       ? "bg-yellow-500/5 border-yellow-500/20"
                       : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
-                    }`}
+                  }`}
                 >
                   {/* Rank */}
                   <div className="flex-shrink-0 flex items-center justify-center w-10">
                     <RankBadge rank={index + 1} />
                   </div>
 
-                  {/* Avatar placeholder */}
+                  {/* Avatar */}
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                     {player.fullName[0]}
                   </div>
@@ -303,15 +397,29 @@ export default async function HomePage() {
                         </span>
                       )}
                     </p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${skillColors[player.skillLevel]}`}>
-                      {tSkill(player.skillLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "SETTER")}
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        skillColors[player.skillLevel] ?? "text-slate-400 bg-slate-400/10"
+                      }`}
+                    >
+                      {tSkill(
+                        player.skillLevel as
+                          | "BEGINNER"
+                          | "INTERMEDIATE"
+                          | "ADVANCED"
+                          | "SETTER"
+                      )}
                     </span>
                   </div>
 
                   {/* Score */}
                   <div className="text-right flex-shrink-0">
-                    <p className="text-orange-400 font-black text-xl">{player.rankingScore}</p>
-                    <p className="text-slate-500 text-xs">{player.gamesPlayed} {t("games")}</p>
+                    <p className="text-orange-400 font-black text-xl">
+                      {player.rankingScore}
+                    </p>
+                    <p className="text-slate-500 text-xs">
+                      {player.gamesPlayed} {t("games")}
+                    </p>
                   </div>
                 </div>
               ))
@@ -320,17 +428,29 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── PLATFORM STATS ────────────────────────────────── */}
+      {/* ── PLATFORM STATS ────────────────────────────────────── */}
       <section className="py-20 px-4">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-2xl font-black text-white text-center mb-10">
             {t("statsTitle")}
           </h2>
           <div className="grid grid-cols-2 gap-4">
-            {[
-              { icon: Users, label: t("totalPlayers"), value: stats.totalPlayers ?? 0, color: "text-blue-400" },
-              { icon: CheckCircle, label: t("totalGames"), value: stats.totalGames ?? 0, color: "text-green-400" },
-            ].map(({ icon: Icon, label, value, color }) => (
+            {(
+              [
+                {
+                  icon: Users,
+                  label: t("totalPlayers"),
+                  value: stats.totalPlayers,
+                  color: "text-blue-400",
+                },
+                {
+                  icon: CheckCircle,
+                  label: t("totalGames"),
+                  value: stats.totalGames,
+                  color: "text-green-400",
+                },
+              ] as const
+            ).map(({ icon: Icon, label, value, color }) => (
               <div
                 key={label}
                 className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 text-center"
@@ -344,10 +464,11 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── FOOTER ───────────────────────────────────────── */}
+      {/* ── FOOTER ───────────────────────────────────────────── */}
       <footer className="border-t border-slate-800 py-8 text-center text-slate-500 text-sm">
         <p>
-          D<span className="text-orange-500">3</span> Volleyball © {new Date().getFullYear()}
+          D<span className="text-orange-500">3</span> Volleyball ©{" "}
+          {new Date().getFullYear()}
         </p>
       </footer>
     </div>
