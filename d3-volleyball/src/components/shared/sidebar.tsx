@@ -2,30 +2,49 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { signOut } from "next-auth/react";
 import {
   LayoutDashboard, Users, Calendar,
-  Trophy, Bell, LogOut, Shield, BarChart2,
+  Trophy, Bell, LogOut, Shield, BarChart2, Menu, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 const adminLinks = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/players", label: "Players", icon: Users },
-  { href: "/admin/games", label: "Games", icon: Calendar },
-  { href: "/admin/teams", label: "Teams", icon: Trophy },
-  { href: "/admin/analytics", label: "Analytics", icon: BarChart2 },
+  { href: "/admin",               label: "Dashboard",     icon: LayoutDashboard },
+  { href: "/admin/players",       label: "Players",       icon: Users },
+  { href: "/admin/games",         label: "Games",         icon: Calendar },
+  { href: "/admin/teams",         label: "Teams",         icon: Trophy },
+  { href: "/admin/analytics",     label: "Analytics",     icon: BarChart2 },
   { href: "/admin/notifications", label: "Notifications", icon: Bell },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
 
-  return (
-    <aside className="w-64 min-h-screen bg-slate-900 border-r border-slate-800 flex flex-col">
+  // Close sidebar whenever the user navigates to a new page
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // Prevent body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
+  const navContent = (
+    <>
       {/* Logo */}
-      <div className="p-6 border-b border-slate-800">
+      <div className="p-6 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Shield className="h-6 w-6 text-orange-500" />
           <span className="text-white font-black text-xl">
@@ -33,12 +52,19 @@ export function Sidebar() {
           </span>
           <span className="text-slate-400 text-sm ms-1">Admin</span>
         </div>
+        {/* Close button — mobile only */}
+        <button
+          onClick={() => setOpen(false)}
+          className="lg:hidden p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          aria-label="Close menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation links */}
       <nav className="flex-1 p-4 space-y-1">
         {adminLinks.map(({ href, label, icon: Icon }) => {
-          // Active if exact match or starts with path (for sub-pages)
           const isActive =
             pathname === href ||
             (href !== "/admin" && pathname.startsWith(href));
@@ -72,6 +98,50 @@ export function Sidebar() {
           Sign Out
         </Button>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* ── Mobile top bar with hamburger ───────────────────── */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 h-14 bg-slate-900 border-b border-slate-800 flex items-center px-4 gap-3">
+        <button
+          onClick={() => setOpen(true)}
+          className="p-2 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          aria-label="Open menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <div className="flex items-center gap-2">
+          <Shield className="h-5 w-5 text-orange-500" />
+          <span className="text-white font-black text-lg">
+            D<span className="text-orange-500">3</span>
+          </span>
+          <span className="text-slate-400 text-xs ms-1">Admin</span>
+        </div>
+      </div>
+
+      {/* ── Backdrop (tap to close) ──────────────────────────── */}
+      {open && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ── Sidebar panel ───────────────────────────────────── */}
+      <aside
+        className={cn(
+          // Desktop: always visible, static in flow
+          "lg:static lg:translate-x-0 lg:flex lg:flex-col lg:w-64 lg:min-h-screen lg:bg-slate-900 lg:border-r lg:border-slate-800",
+          // Mobile: fixed overlay, slides in/out
+          "fixed top-0 left-0 z-50 h-full w-72 bg-slate-900 border-r border-slate-800 flex flex-col transition-transform duration-300 ease-in-out",
+          open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        )}
+      >
+        {navContent}
+      </aside>
+    </>
   );
 }
