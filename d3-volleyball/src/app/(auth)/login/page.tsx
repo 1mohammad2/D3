@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -26,6 +27,9 @@ export default function LoginPage() {
   const callbackUrl = searchParams.get("callbackUrl") || "/";
   const [isPending, startTransition] = useTransition();
 
+  // useSession().update() هي المفتاح — بتجبر SessionProvider يجيب الجلسة الجديدة فوراً
+  const { update } = useSession();
+
   const {
     register,
     handleSubmit,
@@ -36,29 +40,39 @@ export default function LoginPage() {
 
   const onSubmit = (data: LoginInput) => {
     startTransition(async () => {
-      const result = await loginAction(data.email, data.password, callbackUrl);
+      const result = await loginAction(data.email, data.password);
 
       if (!result) return;
 
       switch (result.error) {
         case "BANNED":
           toast.error("Your account has been banned. Contact the admin.");
-          break;
+          return;
+
         case "PENDING_APPROVAL":
           toast.error("Your account is pending admin approval.");
           router.push("/pending-approval");
-          break;
+          return;
+
         case "INVALID":
           toast.error("Invalid email or password.");
-          break;
+          return;
+
         case "DB_ERROR":
           toast.error("Service temporarily unavailable. Please try again in a moment.");
-          break;
+          return;
+
         case "UNKNOWN":
           toast.error("Something went wrong. Please try again.");
-          break;
-        default:
-          break;
+          return;
+
+        case null:
+          // تسجيل الدخول نجح — الـ Cookie انضبط من السيرفر،
+          // الآن لازم نحدّث الـ Session context يدوياً قبل التنقل
+          await update();
+          router.push(callbackUrl);
+          router.refresh();
+          return;
       }
     });
   };

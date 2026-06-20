@@ -9,29 +9,19 @@ type LoginResult = {
 
 export async function loginAction(
   email: string,
-  password: string,
-  callbackUrl: string
+  password: string
 ): Promise<LoginResult> {
   try {
+    // redirect: false — منمنع NextAuth من عمل redirect تلقائي من السيرفر
+    // وبنرجع النتيجة للـ client عشان هو يتحكم بالتنقل + تحديث الجلسة
     await signIn("credentials", {
       email,
       password,
-      redirectTo: callbackUrl || "/",
+      redirect: false,
     });
 
     return { error: null };
   } catch (err: unknown) {
-    // Next.js throws a special redirect error on successful login.
-    // We MUST re-throw it — it is not an error, it IS the success.
-    if (
-      err instanceof Error &&
-      (err.message === "NEXT_REDIRECT" ||
-        (err as { digest?: string }).digest?.startsWith("NEXT_REDIRECT"))
-    ) {
-      throw err;
-    }
-
-    // NextAuth wraps authorize() errors inside AuthError
     if (err instanceof AuthError) {
       const causeMessage = (err.cause?.err as Error | undefined)?.message ?? "";
 
@@ -40,7 +30,6 @@ export async function loginAction(
       return { error: "INVALID" };
     }
 
-    // Database connection failure
     const error = err as { message?: string };
     if (
       error?.message?.includes("Can't reach database") ||
