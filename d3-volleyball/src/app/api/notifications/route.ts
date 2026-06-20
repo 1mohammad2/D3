@@ -1,23 +1,47 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 
-// ── GET /api/notifications ─────────────────────────────────────
-export async function GET() {
+const PAGE_SIZE = 20;
+
+// ── GET /api/notifications?cursor=<id> ──────────────────────────
+// Returns the page after the given cursor, ordered newest first.
+// Without a cursor, returns the first (most recent) page.
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const cursor = req.nextUrl.searchParams.get("cursor");
+
   const notifications = await db.notification.findMany({
     where: { userId: session.user.id },
     orderBy: { createdAt: "desc" },
-    take: 20, // Last 20 notifications
+    take: PAGE_SIZE + 1, // fetch one extra to know if there's a next page
+    ...(cursor
+      ? {
+          cursor: { id: cursor },
+          skip: 1, // skip the cursor item itself
+        }
+      : {}),
   });
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const hasMore = notifications.length > PAGE_SIZE;
+  const page = hasMore ? notifications.slice(0, PAGE_SIZE) : notifications;
+  const nextCursor = hasMore ? page[page.length - 1].id : null;
 
-  return NextResponse.json({ notifications, unreadCount });
+  // Unread count should reflect ALL unread notifications, not just this page
+  const unreadCount = await db.notification.count({
+    where: { userId: session.user.id, isRead: false },
+  });
+
+  return NextResponse.json({
+    notifications: page,
+    unreadCount,
+    nextCursor,
+    hasMore,
+  });
 }
 
 // ── PATCH /api/notifications — mark all as read ────────────────

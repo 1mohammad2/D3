@@ -1,9 +1,10 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import {
   Bell, Check, Trophy, Users,
-  AlertTriangle, Ban, Loader2, CheckCheck,
+  AlertTriangle, Ban, Loader2, CheckCheck, ChevronDown,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -15,6 +16,13 @@ type Notification = {
   message: string;
   isRead: boolean;
   createdAt: string;
+};
+
+type NotificationsPage = {
+  notifications: Notification[];
+  unreadCount: number;
+  nextCursor: string | null;
+  hasMore: boolean;
 };
 
 // ── Icon per notification type ──────────────────────────────────
@@ -34,17 +42,33 @@ function NotifIcon({ type }: { type: string }) {
   );
 }
 
+// ── Fetch one page ────────────────────────────────────────────
+async function fetchNotificationsPage(cursor: string | null): Promise<NotificationsPage> {
+  const url = cursor
+    ? `/api/notifications?cursor=${cursor}`
+    : "/api/notifications";
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch notifications");
+  return res.json();
+}
+
 // ── Page ───────────────────────────────────────────────────────
 export default function AdminNotificationsPage() {
   const queryClient = useQueryClient();
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["notifications"],
-    queryFn: async () => {
-      const res = await fetch("/api/notifications");
-      if (!res.ok) throw new Error("Failed to fetch notifications");
-      return res.json();
-    },
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["notifications-paginated"],
+    queryFn: ({ pageParam }) => fetchNotificationsPage(pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore ? lastPage.nextCursor : undefined,
   });
 
   const markAllMutation = useMutation({
@@ -52,8 +76,9 @@ export default function AdminNotificationsPage() {
       await fetch("/api/notifications", { method: "PATCH" });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-paginated"] });
       queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
 
@@ -62,13 +87,18 @@ export default function AdminNotificationsPage() {
       await fetch(`/api/notifications/${id}`, { method: "PATCH" });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-paginated"] });
       queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
 
-  const notifications: Notification[] = data?.notifications ?? [];
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  // Flatten all loaded pages into one list
+  const notifications: Notification[] =
+    data?.pages.flatMap((page) => page.notifications) ?? [];
+
+  // unreadCount always comes from the freshest page (most accurate, system-wide)
+  const unreadCount = data?.pages[0]?.unreadCount ?? 0;
 
   return (
     <div className="p-6 md:p-8">
@@ -121,41 +151,61 @@ export default function AdminNotificationsPage() {
       )}
 
       {!isLoading && !error && notifications.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl divide-y divide-slate-800 overflow-hidden">
-          {notifications.map((notif) => (
-            <button
-              key={notif.id}
-              onClick={() => {
-                if (!notif.isRead) markOneMutation.mutate(notif.id);
-              }}
-              className={`w-full text-left flex items-start gap-4 px-5 py-4 hover:bg-slate-800/50 transition-colors ${
-                !notif.isRead ? "bg-orange-500/5" : ""
-              }`}
-            >
-              <NotifIcon type={notif.type} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <p
-                    className={`font-medium ${
-                      notif.isRead ? "text-slate-400" : "text-white"
-                    }`}
-                  >
-                    {notif.title}
+        <>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl divide-y divide-slate-800 overflow-hidden">
+            {notifications.map((notif) => (
+              <button
+                key={notif.id}
+                onClick={() => {
+                  if (!notif.isRead) markOneMutation.mutate(notif.id);
+                }}
+                className={`w-full text-left flex items-start gap-4 px-5 py-4 hover:bg-slate-800/50 transition-colors ${
+                  !notif.isRead ? "bg-orange-500/5" : ""
+                }`}
+              >
+                <NotifIcon type={notif.type} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <p
+                      className={`font-medium ${
+                        notif.isRead ? "text-slate-400" : "text-white"
+                      }`}
+                    >
+                      {notif.title}
+                    </p>
+                    {!notif.isRead && (
+                      <span className="w-2 h-2 bg-orange-500 rounded-full shrink-0 mt-2" />
+                    )}
+                  </div>
+                  <p className="text-slate-500 text-sm mt-1">{notif.message}</p>
+                  <p className="text-slate-600 text-xs mt-2">
+                    {formatDistanceToNow(new Date(notif.createdAt), {
+                      addSuffix: true,
+                    })}
                   </p>
-                  {!notif.isRead && (
-                    <span className="w-2 h-2 bg-orange-500 rounded-full shrink-0 mt-2" />
-                  )}
                 </div>
-                <p className="text-slate-500 text-sm mt-1">{notif.message}</p>
-                <p className="text-slate-600 text-xs mt-2">
-                  {formatDistanceToNow(new Date(notif.createdAt), {
-                    addSuffix: true,
-                  })}
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
+              </button>
+            ))}
+          </div>
+
+          {/* Load more button */}
+          {hasNextPage && (
+            <div className="flex justify-center mt-6">
+              <button
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+                className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {isFetchingNextPage ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+                {isFetchingNextPage ? "Loading..." : "Load more"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
