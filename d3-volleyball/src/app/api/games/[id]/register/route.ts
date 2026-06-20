@@ -65,7 +65,9 @@ export async function POST(
     }),
   ]);
 
-  if (existingReg) {
+  // Only a CONFIRMED registration blocks re-registering.
+  // A CANCELLED one is allowed to be reactivated below.
+  if (existingReg && existingReg.status === "CONFIRMED") {
     return NextResponse.json(
       { error: "You are already registered for this game" },
       { status: 409 }
@@ -80,7 +82,11 @@ export async function POST(
   }
 
   // ── Transaction prevents race conditions ──────────────────────
-  const result = await db.$transaction(async (tx) => {
+  type RegisterResult =
+    | { type: "REGISTERED" }
+    | { type: "WAITLISTED"; position: number };
+
+  const result: RegisterResult = await db.$transaction(async (tx) => {
     const confirmedCount = await tx.registration.count({
       where: { gameId, status: "CONFIRMED" },
     });
@@ -101,8 +107,19 @@ export async function POST(
 
     // Spot available → register directly
     if (confirmedCount < game.maxPlayers) {
-      await tx.registration.create({
-        data: { userId, gameId, status: "CONFIRMED" },
+      // upsert: if a CANCELLED record already exists for this user+game,
+      // reactivate it instead of creating a new row (unique constraint
+      // on userId+gameId would otherwise reject a second create()).
+      await tx.registration.upsert({
+        where: { userId_gameId: { userId, gameId } },
+        create: { userId, gameId, status: "CONFIRMED" },
+        update: {
+          status: "CONFIRMED",
+          registeredAt: new Date(),
+          cancelledAt: null,
+          isLateCancellation: false,
+          attended: null,
+        },
       });
       return { type: "REGISTERED" };
     }
@@ -112,8 +129,14 @@ export async function POST(
       where: { gameId, isPromoted: false },
     });
 
-    await tx.waitingList.create({
-      data: { userId, gameId, position: waitingCount + 1 },
+    await tx.waitingList.upsert({
+      where: { userId_gameId: { userId, gameId } },
+      create: { userId, gameId, position: waitingCount + 1 },
+      update: {
+        position: waitingCount + 1,
+        isPromoted: false,
+        promotedAt: null,
+      },
     });
 
     return { type: "WAITLISTED", position: waitingCount + 1 };
@@ -198,11 +221,19 @@ export async function DELETE(
 
     if (firstWaiting) {
       // Auto-promote: give them the spot
-      await tx.registration.create({
-        data: {
+      await tx.registration.upsert({
+        where: { userId_gameId: { userId: firstWaiting.userId, gameId } },
+        create: {
           userId: firstWaiting.userId,
           gameId,
           status: "CONFIRMED",
+        },
+        update: {
+          status: "CONFIRMED",
+          registeredAt: new Date(),
+          cancelledAt: null,
+          isLateCancellation: false,
+          attended: null,
         },
       });
 
